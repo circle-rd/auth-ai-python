@@ -46,6 +46,15 @@ _BASE_PATH_CHARS: Final = frozenset(
 )
 
 
+class _LogoutCookie(BaseModel):
+    """Sealed at sign-out: the state sent to the OP and the page to return to."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    state: str
+    next: str
+
+
 class _HandshakeCookie(BaseModel):
     """What the sealed login cookie carries: the wire names are shared with the TypeScript SDK."""
 
@@ -58,6 +67,7 @@ class _HandshakeCookie(BaseModel):
 
 
 _HANDSHAKE_SCHEMA: Final = TypeAdapter(_HandshakeCookie)
+_LOGOUT_SCHEMA: Final = TypeAdapter(_LogoutCookie)
 
 
 def _is_prompt(value: str | None) -> TypeGuard[Prompt]:
@@ -146,6 +156,7 @@ class AuthHandlers:
         self._key = derive_seal_key(secret)
         self._session_cookie = cookie_name("aai_session", self._secure)
         self._login_cookie = cookie_name("aai_login", self._secure)
+        self._logout_cookie = cookie_name("aai_logout", self._secure)
         # Two simultaneous requests of one session share a single renewal.
         self._renewing: dict[str, asyncio.Task[Session | None]] = {}
 
@@ -160,6 +171,7 @@ class AuthHandlers:
             "/callback": _Route("GET", self._callback),
             "/me": _Route("GET", self._me),
             "/logout": _Route("POST", self._logout),
+            "/logout/callback": _Route("GET", self._logout_callback),
             "/backchannel-logout": _Route("POST", backchannel),
         }
         if ai is not None:
@@ -228,6 +240,7 @@ class AuthHandlers:
         if claims.sub != session.user_id:
             await self._end_sessions([session])
             raise ERR.TOK_001("The refreshed ID token belongs to another user")
+        claims = await self._auth.apply_userinfo(claims, tokens.access_token)
         renewed = Session(
             id=session.id,
             user_id=session.user_id,
@@ -404,11 +417,25 @@ class AuthHandlers:
         if is_cross_site(request, self.origin):
             return error_response(ERR.SES_004(), self.on_error)
         session = await self._read_session(request)
+        query = _query(request)
+        state = secrets.token_urlsafe(32)
+        next_path = safe_redirect_path(query.get("next"), self._default_redirect)
+        logout_cookie = serialize_cookie(
+            self._logout_cookie,
+            seal(
+                self._key,
+                {"state": state, "next": next_path},
+                HANDSHAKE_TTL_SECONDS,
+            ),
+            max_age_seconds=HANDSHAKE_TTL_SECONDS,
+            secure=self._secure,
+        )
         logout_url: str | None = None
         try:
             # The SSO session is shared by every application: end it even without a local session.
             logout_url = await self._auth.logout_url(
-                id_token_hint=session.id_token if session is not None else None
+                id_token_hint=session.id_token if session is not None else None,
+                state=state,
             )
         except Exception as err:  # noqa: BLE001
             # A provider without end-session still lets the local session end.
@@ -416,7 +443,32 @@ class AuthHandlers:
         if session is not None:
             await self._end_sessions([session])
 
-        headers = self._with_cookies(clear_cookie(self._session_cookie, secure=self._secure))
+        headers = self._with_cookies(
+            clear_cookie(self._session_cookie, secure=self._secure),
+            logout_cookie,
+        )
         if "application/json" in (request.header("accept") or ""):
             return json_response({"logoutUrl": logout_url}, 200, headers)
         return redirect_response(logout_url or self._default_redirect, 303, headers)
+
+    async def _logout_callback(self, request: WebRequest) -> WebResponse:
+        """Handles the OP's post-logout redirect.
+
+        The signed local session is already gone; the sealed cookie only carries
+        the destination and the state hint. A missing or different state must not
+        strand the user after the provider has ended the session, so the redirect
+        still succeeds.
+        """
+        target = self._default_redirect
+        sealed = parse_cookies(request.header("cookie")).get(self._logout_cookie)
+        if sealed:
+            try:
+                cookie = unseal(self._key, sealed, _LOGOUT_SCHEMA)
+                target = safe_redirect_path(cookie.next, self._default_redirect)
+            except Exception:  # noqa: BLE001, S110
+                pass
+        return redirect_response(
+            target,
+            303,
+            self._with_cookies(clear_cookie(self._logout_cookie, secure=self._secure)),
+        )

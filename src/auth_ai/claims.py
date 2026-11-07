@@ -41,6 +41,42 @@ class IdTokenClaims(_Claims):
     phone_number: str | None = None
 
 
+class UserInfoClaims(BaseModel):
+    """Standard claims returned by the UserInfo endpoint.
+
+    UserInfo carries no registered token claims (`iss`, `aud`, `exp`, `iat`),
+    so it does not extend `_Claims`; entitlements are repeated because the
+    endpoint may return them as well.
+    """
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    sub: str
+    name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    middle_name: str | None = None
+    nickname: str | None = None
+    preferred_username: str | None = None
+    profile: str | None = None
+    picture: str | None = None
+    website: str | None = None
+    gender: str | None = None
+    birthdate: str | None = None
+    zoneinfo: str | None = None
+    locale: str | None = None
+    updated_at: int | float | None = None
+    email: str | None = None
+    email_verified: bool | None = None
+    phone_number: str | None = None
+    phone_number_verified: bool | None = None
+    roles: list[str] | None = None
+    permissions: list[str] | None = None
+    features: dict[str, FeatureValue] | None = None
+    plan: str | None = None
+    org_id: str | None = None
+
+
 class AccessTokenClaims(_Claims):
     """Claims of a JWT access token.
 

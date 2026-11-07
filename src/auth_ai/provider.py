@@ -42,6 +42,7 @@ class ProviderMetadata(BaseModel):
     issuer: str
     authorization_endpoint: str
     token_endpoint: str
+    userinfo_endpoint: str | None = None
     jwks_uri: str | None = None
     introspection_endpoint: str | None = None
     revocation_endpoint: str | None = None

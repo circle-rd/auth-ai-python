@@ -14,6 +14,23 @@ Sections, when present, appear in this order: `Added`, `Changed`, `Removed`,
 
 <!-- Add user-visible changes here. Move to a dated section at release time. -->
 
+## [0.2.1] - 2026-11-07
+
+### Added
+
+- **UserInfo enrichment**: `AuthClient.fetch_userinfo()` and `AuthClient.apply_userinfo()`.
+  The login callback and the claim-renewal path now call the provider's `userinfo_endpoint`
+  and fill claims the ID token omits (`email`, `email_verified` and the standard profile
+  claims). The UserInfo `sub` is checked against the ID token; claims already present in the
+  ID token are never replaced.
+
+### Changed
+
+- **RP-initiated logout state**: `/auth/logout` now generates a `state`, sends it to the
+  provider's `end_session_endpoint`, and the new `/auth/logout/callback` route accepts the
+  provider's redirect even when the state is missing or different. The reference app registers
+  `/auth/logout/callback` as its post-logout URI.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

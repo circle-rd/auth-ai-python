@@ -56,7 +56,7 @@ auth = AuthClient(
         client_id=config.auth_client_id,
         client_secret=config.auth_client_secret,
         redirect_uri=f"{config.public_url}/auth/callback",
-        post_logout_redirect_uri=f"{config.public_url}/",
+        post_logout_redirect_uri=f"{config.public_url}/auth/logout/callback",
         gateway_url=config.gateway_url,
         resources=(config.public_url,),
     )

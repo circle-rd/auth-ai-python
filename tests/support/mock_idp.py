@@ -60,6 +60,7 @@ class MockIdp:
     metadata: dict[str, Any]
     requests: list[RecordedRequest] = field(default_factory=list)
     token_handler: Handler = lambda _request: json_response({"error": "server_error"}, 500)
+    userinfo_handler: Handler = lambda _request: json_response({"sub": "user-1"})
     api_handler: Handler = lambda _request: json_response(
         {"error": {"code": "APP_002", "message": "unhandled"}}, 404
     )
@@ -125,6 +126,8 @@ class MockIdp:
                 return json_response(self.jwks)
             case "/token":
                 return await _call(self.token_handler, recorded)
+            case "/userinfo":
+                return await _call(self.userinfo_handler, recorded)
             case "/revoke":
                 return httpx2.Response(self.revocation_status)
             case "/introspect":
@@ -149,6 +152,7 @@ def create_mock_idp() -> MockIdp:
         "issuer": ISSUER,
         "authorization_endpoint": f"{ISSUER}/authorize",
         "token_endpoint": f"{ISSUER}/token",
+        "userinfo_endpoint": f"{ISSUER}/userinfo",
         "jwks_uri": f"{ISSUER}/jwks",
         "introspection_endpoint": f"{ISSUER}/introspect",
         "revocation_endpoint": f"{ISSUER}/revoke",

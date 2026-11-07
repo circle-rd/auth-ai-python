@@ -30,6 +30,7 @@ ORIGIN = "https://app.test"
 SECRET = "0123456789abcdef0123456789abcdef"
 SESSION_COOKIE = "__Host-aai_session"
 LOGIN_COOKIE = "__Host-aai_login"
+LOGOUT_COOKIE = "__Host-aai_logout"
 FORM = {"content-type": "application/x-www-form-urlencoded"}
 
 
@@ -155,13 +156,14 @@ class BffHarness:
         self,
         *,
         redirect_uri: str = f"{ORIGIN}/auth/callback",
+        post_logout_redirect_uri: str | None = None,
         gateway: bool = False,
         **overrides: Unpack[OptionOverrides],
     ) -> Parts:
         """Handlers of their own, on the shared session store and provider."""
         auth_config: dict[str, str] = {
             "redirect_uri": redirect_uri,
-            "post_logout_redirect_uri": f"{ORIGIN}/",
+            "post_logout_redirect_uri": post_logout_redirect_uri or f"{ORIGIN}/",
         }
         if gateway:
             auth_config["gateway_url"] = GATEWAY_URL
@@ -178,9 +180,14 @@ class BffHarness:
         ai = AiClient(auth=auth, grants=grants) if gateway else None
         return Parts(auth, grants, AuthHandlers(auth=auth, grants=grants, ai=ai, **options))
 
-    def build(self, **overrides: Unpack[OptionOverrides]) -> AuthHandlers:
+    def build(
+        self,
+        *,
+        post_logout_redirect_uri: str | None = None,
+        **overrides: Unpack[OptionOverrides],
+    ) -> AuthHandlers:
         """Replaces the harness' handlers."""
-        parts = self.create(**overrides)
+        parts = self.create(post_logout_redirect_uri=post_logout_redirect_uri, **overrides)
         self.auth, self.grants, self.handlers = parts.auth, parts.grants, parts.handlers
         return parts.handlers
 

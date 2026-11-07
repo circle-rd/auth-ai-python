@@ -84,6 +84,33 @@ class ProviderEndpoints:
         except httpx2.HTTPError as err:
             raise ERR.OIDC_003(cause=err) from err
 
+    async def userinfo_request(self, url: str, access_token: str) -> dict[str, Any]:
+        """GETs UserInfo with the access token. The token never enters an error."""
+        try:
+            response = await self._http.get(
+                url,
+                headers={
+                    "authorization": f"Bearer {access_token}",
+                    "accept": "application/json",
+                },
+                timeout=self._config.timeout_seconds,
+                follow_redirects=False,
+            )
+        except httpx2.HTTPError as err:
+            raise ERR.OIDC_003(cause=err) from err
+        if not response.is_success:
+            raise ERR.OIDC_003(
+                f"UserInfo endpoint answered HTTP {response.status_code}",
+                details={"status": response.status_code},
+            )
+        try:
+            body = response.json()
+        except ValueError as err:
+            raise ERR.TOK_001("The UserInfo response is not JSON", cause=err) from err
+        if not isinstance(body, dict):
+            raise ERR.TOK_001("The UserInfo response has an unexpected shape")
+        return body
+
     async def token_request(self, url: str, form: Mapping[str, FormValue]) -> TokenSet:
         response = await self.post(url, form)
         body = _json_object(response)
